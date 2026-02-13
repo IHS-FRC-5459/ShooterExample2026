@@ -159,9 +159,9 @@ public class Robot extends LoggedRobot {
     double readingInRad = reading * Math.PI / 180;
     hoodPID.setSetpoint(10 * Math.PI / 180);
     Logger.recordOutput("Setpoint", hoodPID.getSetpoint());
-    double pidVolts = hoodPID.calculate(readingInRad);
+    double pidVolts = hoodPID.calculate(readingInRad); 
     Logger.recordOutput("Rate", hoodEncoder.getRate());
-    double ffVolts = hoodFeedforward.calculate(readingInRad, hoodEncoder.getRate());
+    double ffVolts = hoodFeedforward.calculate(readingInRad, 0);
     double volts = pidVolts + ffVolts;
     Logger.recordOutput("pid volts: ",  pidVolts);
     Logger.recordOutput("ffVolts ",  ffVolts);
