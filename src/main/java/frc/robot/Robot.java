@@ -48,9 +48,9 @@ public class Robot extends LoggedRobot {
   private final TalonFX m_fllr = new TalonFX(29, canbus);
   private final TalonFX indexer = new TalonFX(14, canbus);
   private final SparkMax hoodController = new SparkMax(26, MotorType.kBrushless);
-  private final Encoder hoodEncoder = new Encoder(7,8, true); 
+  private final Encoder hoodEncoder = new Encoder(7,8); 
   private final ArmFeedforward hoodFeedforward = new ArmFeedforward(0, 0.4, 0);
-  private final PIDController hoodPID = new PIDController(0.01, 0, 0);
+  private final PIDController hoodPID = new PIDController(1, 0.05, 0);
   /* Be able to switch which control request to use based on a button press */
   /* Start at velocity 0, use slot 0 */
   private final VelocityVoltage m_velocityVoltage = new VelocityVoltage(0).withSlot(0);
@@ -121,7 +121,7 @@ public class Robot extends LoggedRobot {
   @Override
   public void robotPeriodic() {
     m_mechanisms.update(m_fx.getPosition(), m_fx.getVelocity());
-    Logger.recordOutput("Encoder actual:  ", hoodEncoder.getDistance());
+    Logger.recordOutput("Encoder actual:  ", -hoodEncoder.getDistance());
   }
 
   @Override
@@ -155,13 +155,13 @@ public class Robot extends LoggedRobot {
     // }else{
     //   hoodController.set(0);
     // }
-    double reading = hoodEncoder.getDistance();
+    double reading = -hoodEncoder.getDistance();
     double readingInRad = reading * Math.PI / 180;
     hoodPID.setSetpoint(10 * Math.PI / 180);
     Logger.recordOutput("Setpoint", hoodPID.getSetpoint());
     double pidVolts = hoodPID.calculate(readingInRad); 
     Logger.recordOutput("Rate", hoodEncoder.getRate());
-    double ffVolts = hoodFeedforward.calculate(readingInRad, 0);
+    double ffVolts = 0;//hoodFeedforward.calculate(readingInRad, hoodEncoder.getRate());
     double volts = pidVolts + ffVolts;
     Logger.recordOutput("pid volts: ",  pidVolts);
     Logger.recordOutput("ffVolts ",  ffVolts);
