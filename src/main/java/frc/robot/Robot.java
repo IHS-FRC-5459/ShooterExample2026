@@ -66,11 +66,6 @@ public class Robot extends LoggedRobot {
   private final XboxController m_joystick = new XboxController(1);
 
   private final Mechanisms m_mechanisms = new Mechanisms();
-  //Constants for interpolation table tuning
-  //Directions for filling: Make a spreadsheet or something with distance in m away from the center of the hub, and then tune these 3 to make it go in with the most propability
-  private double hoodSetpoint = 20;//Approximately in degrees
-  private double flywheelSpeed = 40;//In rotations per second
-  private double indexerSpeed = 0.4;//In percent power(between -1 to 1). Should remain mostly constant
   /**
    * This function is run when the robot is first started up and should be used for any
    * initialization code.
@@ -95,7 +90,7 @@ public class Robot extends LoggedRobot {
     configs.Slot0.kS = 0.1; // To account for friction, add 0.1 V of static feedforward
     configs.Slot0.kV = 0.12; // Kraken X60 is a 500 kV motor, 500 rpm per V = 8.333 rps per V, 1/8.33 = 0.12 volts / rotation per second
     configs.Slot0.kP = 0.11; // An error of 1 rotation per second results in 0.11 V output
-    configs.Slot0.kI = 0; // No output for integrated error
+    configs.Slot0.kI = 0.01; // No output for integrated error
     configs.Slot0.kD = 0; // No output for error derivative
     // Peak output of 8 volts
     configs.Voltage.withPeakForwardVoltage(Volts.of(8))
@@ -104,7 +99,7 @@ public class Robot extends LoggedRobot {
     /* Torque-based velocity does not require a velocity feed forward, as torque will accelerate the rotor up to the desired velocity by itself */
     configs.Slot1.kS = 2.5; // To account for friction, add 2.5 A of static feedforward
     configs.Slot1.kP = 5; // An error of 1 rotation per second results in 5 A output
-    configs.Slot1.kI = 0; // No output for integrated error
+    configs.Slot1.kI = 0.05; // No output for integrated error
     configs.Slot1.kD = 0; // No output for error derivative
     // Peak output of 40 A
     configs.TorqueCurrent.withPeakForwardTorqueCurrent(Amps.of(40))
@@ -119,17 +114,17 @@ public class Robot extends LoggedRobot {
     if (!status.isOK()) {
       System.out.println("Could not apply configs, error code: " + status.toString());
     }
+    m_fllr.setControl(new Follower(m_fx.getDeviceID(), MotorAlignmentValue.Opposed));
     SparkMaxConfig hoodConfig = new SparkMaxConfig();
     hoodConfig.inverted(false);
     hoodController.configure(hoodConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
-      m_fllr.setControl(new Follower(m_fx.getDeviceID(), MotorAlignmentValue.Opposed));
     hoodEncoder.setDistancePerPulse(0.02);
     //This happends to be about encoder dist = degrees of hood
     hoodEncoder.reset();
     SmartDashboard.putNumber("FlywheelSpeed", 40);
+
     SmartDashboard.putNumber("IndexerSpeed", 0.4);
     SmartDashboard.putNumber("HoodSetpoint", 10);
-
   }
 
   @Override
@@ -149,9 +144,9 @@ public class Robot extends LoggedRobot {
   Queue<Double> encoderQ = new LinkedList<>();
   @Override
   public void teleopPeriodic() {
-    flywheelSpeed = SmartDashboard.getNumber("FlywheelSpeed", 40);
-    indexerSpeed = SmartDashboard.getNumber("IndexerSpeed", 0.4);
-    hoodSetpoint = SmartDashboard.getNumber("HoodSetpoint", 10);
+    double flywheelSpeed = SmartDashboard.getNumber("FlywheelSpeed", 40);
+    double indexerSpeed = SmartDashboard.getNumber("IndexerSpeed", 0.4);
+    double hoodSetpoint = SmartDashboard.getNumber("HoodSetpoint", 10);
     Logger.recordOutput("inputs/Flywheel speed", flywheelSpeed);
     Logger.recordOutput("inputs/Indexer speed", indexerSpeed);
     Logger.recordOutput("inputs/Hood setpoint", hoodSetpoint);
@@ -177,7 +172,8 @@ public class Robot extends LoggedRobot {
       /* Use velocity voltage */
       System.out.println("Rot per sec"+ desiredRotationsPerSecond);
       m_fx.setControl(m_velocityVoltage.withVelocity(desiredRotationsPerSecond));
-     // m_fllr.setControl(m_velocityVoltage.withVelocity(desiredRotationsPerSecond));
+
+      // m_fllr.setControl(m_velocityVoltage.withVelocity(desiredRotationsPerSecond));
     } else if (m_joystick.getRightBumperButton()) {
       /* Use velocity torque */
       m_fx.setControl(m_velocityTorque.withVelocity(desiredRotationsPerSecond));
