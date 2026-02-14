@@ -54,7 +54,7 @@ public class Robot extends LoggedRobot {
   private final SparkMax hoodController = new SparkMax(26, MotorType.kBrushless);
   private final Encoder hoodEncoder = new Encoder(7,8); 
   private final ArmFeedforward hoodFeedforward = new ArmFeedforward(0, 0.4, 0);
-  private final PIDController hoodPID = new PIDController(25, 15, 0.001);
+  private final PIDController hoodPID = new PIDController(4, 1, 0.002);
   /* Be able to switch which control request to use based on a button press */
   /* Start at velocity 0, use slot 0 */
   private final VelocityVoltage m_velocityVoltage = new VelocityVoltage(0).withSlot(0);
@@ -121,16 +121,19 @@ public class Robot extends LoggedRobot {
     hoodEncoder.setDistancePerPulse(0.02);
     //This happends to be about encoder dist = degrees of hood
     hoodEncoder.reset();
-    SmartDashboard.putNumber("FlywheelSpeed", 40);
+    SmartDashboard.putNumber("FlywheelSpeed", 56); // change later (changed for conveince now)
 
-    SmartDashboard.putNumber("IndexerSpeed", 0.4);
-    SmartDashboard.putNumber("HoodSetpoint", 10);
+    SmartDashboard.putNumber("IndexerSpeed", 0.7);
+    SmartDashboard.putNumber("HoodSetpoint", 0);
   }
 
   @Override
   public void robotPeriodic() {
     m_mechanisms.update(m_fx.getPosition(), m_fx.getVelocity());
-    Logger.recordOutput("Encoder actual:  ", -hoodEncoder.getDistance());
+    Logger.recordOutput("EncoderActual:", -hoodEncoder.getDistance());
+    if(m_joystick.getBButton()){
+      hoodEncoder.reset();
+    }
   }
 
   @Override
@@ -140,7 +143,8 @@ public class Robot extends LoggedRobot {
   public void autonomousPeriodic() {}
 
   @Override
-  public void teleopInit() {}
+  public void teleopInit() {
+  }
   Queue<Double> encoderQ = new LinkedList<>();
   @Override
   public void teleopPeriodic() {
@@ -166,12 +170,13 @@ public class Robot extends LoggedRobot {
 
     if (Math.abs(joyValue) < 0.1) joyValue = 0;
 
-    double desiredRotationsPerSecond = 0;//joyValue * 90; // Go for plus/minus 50 rotations per second
-    desiredRotationsPerSecond = flywheelSpeed;
+    double desiredRotationsPerSecond = joyValue * 50; // Go for plus/minus 50 rotations per second
+    //desiredRotationsPerSecond = flywheelSpeed;
     if (m_joystick.getLeftBumperButton()) {
       /* Use velocity voltage */
-      System.out.println("Rot per sec"+ desiredRotationsPerSecond);
-      m_fx.setControl(m_velocityVoltage.withVelocity(desiredRotationsPerSecond));
+      System.out.println("Rot per sec"+ flywheelSpeed);
+      m_fx.setControl(m_velocityVoltage.withVelocity(flywheelSpeed));
+      Logger.recordOutput("outputs/flywheelObserved", m_fx.getVelocity(true).getValueAsDouble());
 
       // m_fllr.setControl(m_velocityVoltage.withVelocity(desiredRotationsPerSecond));
     } else if (m_joystick.getRightBumperButton()) {
@@ -186,16 +191,16 @@ public class Robot extends LoggedRobot {
     }else{
           indexer.set(0);
     }
-    if(m_joystick.getBButton()){
-      hoodEncoder.reset();
-    }
   }
 
   @Override
   public void disabledInit() {}
 
   @Override
-  public void disabledPeriodic() {}
+  public void disabledPeriodic() {
+    hoodEncoder.reset();
+    hoodPID.reset();
+  }
 
   @Override
   public void testInit() {}
