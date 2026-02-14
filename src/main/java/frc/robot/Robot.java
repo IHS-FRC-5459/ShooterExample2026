@@ -24,7 +24,10 @@ import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.VelocityTorqueCurrentFOC;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.revrobotics.PersistMode;
 import com.revrobotics.spark.SparkMax;
+import com.revrobotics.ResetMode;
+import com.revrobotics.spark.config.SparkMaxConfig;
 import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
 
@@ -34,6 +37,7 @@ import edu.wpi.first.math.controller.PIDController;
 import edu.wpi.first.wpilibj.Encoder;
 import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.XboxController;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import frc.robot.sim.PhysicsSim;
 
 /**
@@ -50,7 +54,7 @@ public class Robot extends LoggedRobot {
   private final SparkMax hoodController = new SparkMax(26, MotorType.kBrushless);
   private final Encoder hoodEncoder = new Encoder(7,8); 
   private final ArmFeedforward hoodFeedforward = new ArmFeedforward(0, 0.4, 0);
-  private final PIDController hoodPID = new PIDController(1, 0.05, 0);
+  private final PIDController hoodPID = new PIDController(25, 15, 0.001);
   /* Be able to switch which control request to use based on a button press */
   /* Start at velocity 0, use slot 0 */
   private final VelocityVoltage m_velocityVoltage = new VelocityVoltage(0).withSlot(0);
@@ -62,7 +66,11 @@ public class Robot extends LoggedRobot {
   private final XboxController m_joystick = new XboxController(1);
 
   private final Mechanisms m_mechanisms = new Mechanisms();
-
+  //Constants for interpolation table tuning
+  //Directions for filling: Make a spreadsheet or something with distance in m away from the center of the hub, and then tune these 3 to make it go in with the most propability
+  private double hoodSetpoint = 20;//Approximately in degrees
+  private double flywheelSpeed = 40;//In rotations per second
+  private double indexerSpeed = 0.4;//In percent power(between -1 to 1). Should remain mostly constant
   /**
    * This function is run when the robot is first started up and should be used for any
    * initialization code.
@@ -111,11 +119,17 @@ public class Robot extends LoggedRobot {
     if (!status.isOK()) {
       System.out.println("Could not apply configs, error code: " + status.toString());
     }
-
-    m_fllr.setControl(new Follower(m_fx.getDeviceID(), MotorAlignmentValue.Opposed));
+    SparkMaxConfig hoodConfig = new SparkMaxConfig();
+    hoodConfig.inverted(false);
+    hoodController.configure(hoodConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);
+      m_fllr.setControl(new Follower(m_fx.getDeviceID(), MotorAlignmentValue.Opposed));
     hoodEncoder.setDistancePerPulse(0.02);
     //This happends to be about encoder dist = degrees of hood
     hoodEncoder.reset();
+    SmartDashboard.putNumber("FlywheelSpeed", 40);
+    SmartDashboard.putNumber("IndexerSpeed", 0.4);
+    SmartDashboard.putNumber("HoodSetpoint", 10);
+
   }
 
   @Override
@@ -135,33 +149,20 @@ public class Robot extends LoggedRobot {
   Queue<Double> encoderQ = new LinkedList<>();
   @Override
   public void teleopPeriodic() {
+    flywheelSpeed = SmartDashboard.getNumber("FlywheelSpeed", 40);
+    indexerSpeed = SmartDashboard.getNumber("IndexerSpeed", 0.4);
+    hoodSetpoint = SmartDashboard.getNumber("HoodSetpoint", 10);
+    Logger.recordOutput("inputs/Flywheel speed", flywheelSpeed);
+    Logger.recordOutput("inputs/Indexer speed", indexerSpeed);
+    Logger.recordOutput("inputs/Hood setpoint", hoodSetpoint);
     double joyValue = m_joystick.getLeftY();
-    // encoderQ.add(hoodEncoder.getDistance());
-    // if(encoderQ.size() > 5){
-    //   encoderQ.remove();
-    // }
-    // double total = 0;
-    // for(double val : encoderQ){
-    //   total += val;
-    // }
-    // total = total / encoderQ.size();
-
-    // if(Math.abs(hoodGoal - reading) > 5){
-    //   if(reading < hoodGoal){
-    //     hoodController.set(MathUtil.clamp(hoodGoal - reading, 0, 0.01));
-    //   }else{
-    //     hoodController.set(MathUtil.clamp(hoodGoal - reading, -0.001, 0));
-    //   }
-    // }else{
-    //   hoodController.set(0);
-    // }
     double reading = -hoodEncoder.getDistance();
     double readingInRad = reading * Math.PI / 180;
-    hoodPID.setSetpoint(10 * Math.PI / 180);
+    hoodPID.setSetpoint(hoodSetpoint * Math.PI / 180);
     Logger.recordOutput("Setpoint", hoodPID.getSetpoint());
     double pidVolts = hoodPID.calculate(readingInRad); 
     Logger.recordOutput("Rate", hoodEncoder.getRate());
-    double ffVolts = 0;//hoodFeedforward.calculate(readingInRad, hoodEncoder.getRate());
+    double ffVolts = hoodFeedforward.calculate(readingInRad, hoodEncoder.getRate());
     double volts = pidVolts + ffVolts;
     Logger.recordOutput("pid volts: ",  pidVolts);
     Logger.recordOutput("ffVolts ",  ffVolts);
@@ -170,8 +171,8 @@ public class Robot extends LoggedRobot {
 
     if (Math.abs(joyValue) < 0.1) joyValue = 0;
 
-    double desiredRotationsPerSecond = joyValue * 90; // Go for plus/minus 50 rotations per second
-    desiredRotationsPerSecond = 42;
+    double desiredRotationsPerSecond = 0;//joyValue * 90; // Go for plus/minus 50 rotations per second
+    desiredRotationsPerSecond = flywheelSpeed;
     if (m_joystick.getLeftBumperButton()) {
       /* Use velocity voltage */
       System.out.println("Rot per sec"+ desiredRotationsPerSecond);
@@ -185,9 +186,12 @@ public class Robot extends LoggedRobot {
       m_fx.setControl(m_brake);
     }
     if(m_joystick.getAButton()){
-      indexer.set(0.4);
+      indexer.set(indexerSpeed);
     }else{
           indexer.set(0);
+    }
+    if(m_joystick.getBButton()){
+      hoodEncoder.reset();
     }
   }
 
